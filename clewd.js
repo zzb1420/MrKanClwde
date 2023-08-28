@@ -7,16 +7,13 @@
 const {createServer: Server, IncomingMessage, ServerResponse} = require('node:http'), {createHash: Hash, randomUUID, randomInt, randomBytes} = require('node:crypto'), {TransformStream, ReadableStream} = require('node:stream/web'), {Readable, Writable} = require('node:stream'), {Blob} = require('node:buffer'), {existsSync: exists, writeFileSync: write, createWriteStream} = require('node:fs'), {join: joinP} = require('node:path'), {ClewdSuperfetch: Superfetch, SuperfetchAvailable} = require('./lib/clewd-superfetch'), {AI, fileName, genericFixes, bytesToSize, setTitle, checkResErr, Replacements, Main} = require('./lib/clewd-utils'), ClewdStream = require('./lib/clewd-stream');
 
 /******************************************************* */
-let currentIndex = 0;
+let currentIndex = 1, Firstlogin = true, changeflag = 0;
 
-let Firstlogin = true;
-
-const events = require('events');
-const CookieChanger = new events.EventEmitter();
+const events = require('events'), CookieChanger = new events.EventEmitter();
 
 CookieChanger.on('ChangeCookie', () => {
     Proxy && Proxy.close();
-    console.log('\nChanging Cookie...\n');
+    console.log(`\nChanging Cookie...\n`);
     Proxy.listen(Config.Port, Config.Ip, onListen);
     Proxy.on('error', (err => {
         console.error('Proxy error\n%o', err);
@@ -36,10 +33,8 @@ const simpletokenizer = (str) => {
         }
     }
     return byteLength;
-}
-
-const padJson = (json) => {
-    if (Config.padtxt_placeholder.length > 0){
+}, padJson = (json) => {
+    if (Config.padtxt_placeholder.length > 0) {
         var placeholder = Config.padtxt_placeholder;
     }
     else {
@@ -59,10 +54,8 @@ const padJson = (json) => {
 
     result = result.replace(/^\s*/, '');
 
-    return result
-};
-
-const AddxmlPlot = (content) => {
+    return result;
+}, AddxmlPlot = (content) => {
     // 检查内容中是否包含"<card>","[Start a new"字符串
     if (!content.includes('<card>')) {
         return content;
@@ -93,14 +86,14 @@ const AddxmlPlot = (content) => {
     let processMatch = content.match(/\n##.*?\n<process>[\s\S]*?<\/process>\n/);
   
     if (sexMatch && processMatch) {
-        content = content.replace(sexMatch[0], ""); // 移除<sex>部分
+        content = content.replace(sexMatch[0], ''); // 移除<sex>部分
         content = content.replace(processMatch[0], sexMatch[0] + processMatch[0]); // 将<sex>部分插入<delete>部分的前面
     }
 
     let illustrationMatch = content.match(/\n##.*?\n<illustration>[\s\S]*?<\/illustration>\n/);
 
     if (illustrationMatch && processMatch) {
-        content = content.replace(illustrationMatch[0], ""); // 移除<illustration>部分
+        content = content.replace(illustrationMatch[0], ''); // 移除<illustration>部分
         content = content.replace(processMatch[0], illustrationMatch[0] + processMatch[0]); // 将<illustration>部分插入<delete>部分的前面
     }
 
@@ -110,9 +103,20 @@ const AddxmlPlot = (content) => {
     content = content.replace(/(?<=\n<(card|hidden|example)>\n)\s*/g, '');
     content = content.replace(/\s*(?=\n<\/(card|hidden|example)>(\n|$))/g, '');
     content = content.replace(/\n<(example|hidden)>\n<\/\1>/g, '');
+
+    if (Config.Settings.xmlPlot === 2) {
+        let hiddenregex = /\n<hidden>[\s\S]*?<\/hidden>/g;
+        let lastHumanIndex = content.lastIndexOf('\n\nHuman:');
+        let jailbreak = content.slice(lastHumanIndex).match(hiddenregex);
+        if (jailbreak) {
+            content = content.replace(jailbreak, '');
+            content = content.slice(0, lastHumanIndex) + '\n\nHuman:' + jailbreak + '\n' + content.slice(lastHumanIndex);
+        }
+    }
+    
     content = content.replace(/\n\n\n/g, '\n\n');
 
-    return content
+    return content;
 };
 /******************************************************* */
 
@@ -127,6 +131,7 @@ const ConfigPath = joinP(__dirname, './config.js'), LogPath = joinP(__dirname, '
 let uuidOrg, curPrompt = {}, prevPrompt = {}, prevMessages = [], prevImpersonated = false, Config = {
     Cookie: '',
     CookieArray: [],
+    Cookiecounter: 0,
     Ip: process.env.PORT ? '0.0.0.0' : '127.0.0.1',
     Port: process.env.PORT || 8444,
     BufferSize: 1,
@@ -213,6 +218,7 @@ const updateParams = res => {
     if (Firstlogin) {
         Firstlogin = false;   
         console.log(`[2m${Main}[0m\n[33mhttp://${Config.Ip}:${Config.Port}/v1[0m\n\n${Object.keys(Config.Settings).map((setting => UnknownSettings.includes(setting) ? `??? [31m${setting}: ${Config.Settings[setting]}[0m` : `[1m${setting}:[0m ${ChangedSettings.includes(setting) ? '[33m' : '[36m'}${Config.Settings[setting]}[0m`)).sort().join('\n')}\n`);
+        Config.Settings.Superfetch && SuperfetchAvailable(true);
         if (Config.Settings.localtunnel) {
             const localtunnel = require('localtunnel');
             localtunnel({ port: Config.Port })
@@ -221,17 +227,17 @@ const updateParams = res => {
             })
         }
     }
-    if (Config.CookieArray.length > 0) {
+    if (Config.CookieArray?.length > 0) {
+        Config.Cookie = Config.CookieArray[currentIndex -1];
         currentIndex = (currentIndex + 1) % Config.CookieArray.length;
-        Config.Cookie = Config.CookieArray[currentIndex];
     }
-/***************************** */      
+/***************************** */
     if ('SET YOUR COOKIE HERE' === Config.Cookie || Config.Cookie?.length < 1) {
         throw Error('Set your cookie inside config.js');
     }
     updateCookies(Config.Cookie);
     //console.log(`[2m${Main}[0m\n[33mhttp://${Config.Ip}:${Config.Port}/v1[0m\n\n${Object.keys(Config.Settings).map((setting => UnknownSettings.includes(setting) ? `??? [31m${setting}: ${Config.Settings[setting]}[0m` : `[1m${setting}:[0m ${ChangedSettings.includes(setting) ? '[33m' : '[36m'}${Config.Settings[setting]}[0m`)).sort().join('\n')}\n`);
-    Config.Settings.Superfetch && SuperfetchAvailable(true);
+    //Config.Settings.Superfetch && SuperfetchAvailable(true);
     const accRes = await fetch(Config.rProxy + '/api/organizations', {
         method: 'GET',
         headers: {
@@ -240,13 +246,13 @@ const updateParams = res => {
         }
     });
 /**************************** */
-    if ((accRes.statusText === 'Forbidden') && Config.CookieArray.length > 0){
+    if ((accRes.statusText === 'Forbidden') && Config.CookieArray.length > 0) {
         Config.CookieArray = Config.CookieArray.filter(item => item !== Config.Cookie);
         writeSettings(Config);
         currentIndex = currentIndex - 1;
         return CookieChanger.emit('ChangeCookie');
     }
-/**************************** */    
+/**************************** */
     await checkResErr(accRes);
     const accInfo = (await accRes.json())?.[0];
     if (!accInfo || accInfo.error) {
@@ -451,6 +457,17 @@ const updateParams = res => {
                                 })
                             });
                             updateParams(res);
+/**************************** */
+                            if (res.status < 200 || res.status >= 300) {
+                                let json = await res.json();
+                                if ((json.error.message.includes('Account has not completed verification')) && Config.CookieArray.length > 0) {
+                                    Config.CookieArray = Config.CookieArray.filter(item => item !== Config.Cookie);
+                                    writeSettings(Config);
+                                    currentIndex = currentIndex - 1;
+                                    CookieChanger.emit('ChangeCookie');
+                                }   
+                            }
+/**************************** */
                             await checkResErr(res);
                             return res;
                         })(signal);
@@ -536,7 +553,7 @@ const updateParams = res => {
                                 return message.content;
                             }
                             let spacing = '';
-                            //idx > 0 && (spacing = systemMessages.includes(message) ? '\n\n' : '\n\n');
+                            //idx > 0 && (spacing = systemMessages.includes(message) ? '\n' : '\n\n');
                             idx > 0 && (spacing = '\n\n');
                             const prefix = message.customname ? message.name + ': ' : 'system' !== message.role || message.name ? Replacements[message.name || message.role] + ': ' : '' + Replacements[message.role];
                             return `${spacing}${message.strip ? '' : prefix}${'system' === message.role ? message.content : message.content.trim()}`;
@@ -550,9 +567,9 @@ const updateParams = res => {
                     'R' !== type || prompt || (prompt = '...regen...');
 /****************************************************************/
                     Config.Settings.xmlPlot && (prompt = AddxmlPlot(prompt));
-                    Config.Settings.FullColon && (prompt = prompt.replace(/(?<=\n\n(H(?:uman)?|A(?:ssistant)?)):[ ]?/g, '： '));
+                    Config.Settings.FullColon && (prompt = prompt.replace(/(?<=\n\n(H(?:uman)?|A(?:ssistant)?|[Ss]ystem)):[ ]?/g, '： '));
                     Config.Settings.padtxt && (prompt = padJson(prompt));
-/****************************************************************/                    
+/****************************************************************/
                     Logger?.write(`\n\n-------\n[${(new Date).toLocaleString()}]\n####### PROMPT (${type}):\n${prompt}\n--\n####### REPLY:\n`);
                     retryRegen || (fetchAPI = await (async (signal, model, prompt, temperature, type) => {
                         const attachments = [];
@@ -628,13 +645,17 @@ const updateParams = res => {
                     clewdStream.censored && console.warn('[33mlikely your account is hard-censored[0m');
                     prevImpersonated = clewdStream.impersonated;
                     setTitle('ok ' + bytesToSize(clewdStream.size));
-/******************************** */ 
+/******************************** */
                     if (clewdStream.readonly) {
                         Config.CookieArray = Config.CookieArray.filter(item => item !== Config.Cookie);
                         writeSettings(Config);
                         currentIndex = currentIndex - 1;
                     }
-                    clewdStream.cookiechange && CookieChanger.emit('ChangeCookie');
+                    changeflag = changeflag + 1;
+                    if (clewdStream.cookiechange || (changeflag && changeflag >= Config.Cookiecounter)) {
+                        changeflag = 0;
+                        CookieChanger.emit('ChangeCookie');
+                    }
 /******************************** */
                     console.log(`${200 == fetchAPI.status ? '[32m' : '[33m'}${fetchAPI.status}![0m\n`);
                     clewdStream.empty();
@@ -657,7 +678,7 @@ const updateParams = res => {
         break;
 
       default:
-        console.log('unknown request: ' + req.url);
+        req.url !== '/' && (console.log('unknown request: ' + req.url)); //console.log('unknown request: ' + req.url);
         res.json({
             error: {
                 message: '404 Not Found',
@@ -707,15 +728,16 @@ const updateParams = res => {
                     Config.Settings[setting] = process.env[setting] ?? Config.Settings[setting];
                 }
             } else {
-                Config[key] = key === 'CookieArray' ? (process.env[key]?.split(',') ?? Config[key]) : (process.env[key] ?? Config[key]);
+                Config[key] = key === 'CookieArray' ? (process.env[key]?.split(',')?.map(x => x.replace(/[\[\]"\s]/g, '')) ?? Config[key]) : (process.env[key] ?? Config[key]);
             }
         }
 /***************************** */
     })();
-/***************************** */    
+/***************************** */
     !Config.rProxy && (Config.rProxy = AI.end());
+    Config.rProxy.endsWith('/') && (Config.rProxy = Config.rProxy.slice(0, -1));
     currentIndex = Math.floor(Math.random() * Config.CookieArray.length);
-/***************************** */    
+/***************************** */
     Proxy.listen(Config.Port, Config.Ip, onListen);
     Proxy.on('error', (err => {
         console.error('Proxy error\n%o', err);
@@ -738,5 +760,13 @@ process.on('SIGTERM', cleanup);
 process.on('SIGINT', cleanup);
 
 process.on('exit', (async () => {
-    console.log('exiting...');
+    //console.log('exiting...');
+/********************* */
+    console.log('restarting...'); 
+    Proxy && Proxy.close();
+    Proxy.listen(Config.Port, Config.Ip, onListen);
+    Proxy.on('error', (err => {
+        console.error('Proxy error\n%o', err);
+    }));
+/********************* */
 }));
