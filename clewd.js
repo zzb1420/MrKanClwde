@@ -36,8 +36,7 @@ const simpletokenizer = (str) => {
 }, padJson = (json) => {
     if (Config.padtxt_placeholder.length > 0) {
         var placeholder = Config.padtxt_placeholder;
-    }
-    else {
+    } else {
         const bytes = randomInt(5, 15);
         var placeholder = randomBytes(bytes).toString('hex');
     }
@@ -97,31 +96,24 @@ const simpletokenizer = (str) => {
         content = content.replace(processMatch[0], illustrationMatch[0] + processMatch[0]); // 将<illustration>部分插入<delete>部分的前面
     }
 
-    content = content.replace(/\n\n<(hidden|\/plot)>[\s\S]*?\n\n<extra_prompt>\s*/, '\n\nHuman:'); //sd prompt用
-
-    //消除空XML tags或多余的\n
-    content = content.replace(/(?<=\n<(card|hidden|example)>\n)\s*/g, '');
-    content = content.replace(/\s*(?=\n<\/(card|hidden|example)>(\n|$))/g, '');
-    content = content.replace(/\n<(example|hidden)>\n+?<\/\1>/g, '');
-    content = content.replace(/\n<\/hidden>\n+?<hidden>\n/g, '');
-
     if (Config.Settings.xmlPlot === 2) {
-        let hiddenregex = /\n<hidden>[\s\S]*?<\/hidden>/g;
-        let lastHumanIndex = content.lastIndexOf('\n\nHuman:');
-        let jailbreak = content.slice(lastHumanIndex).match(hiddenregex);
-        if (jailbreak) {
-            content = content.replace(jailbreak, '');
-            content = content.slice(0, lastHumanIndex) + '\n\nHuman:' + jailbreak + '\n' + content.slice(lastHumanIndex);
-        }
+        let segcontent = content.split('\n\nHuman:');
+        let processedseg = segcontent.map(seg => {
+            return seg.replace(/(\n\nAssistant:[\s\S]+?)(\n\n<hidden>[\s\S]+?<\/hidden>)/g, '$2$1');
+        });
+        let seglength = processedseg.length;
+        (/Assistant: *.$/.test(content) && seglength > 1) && (processedseg[seglength - 2] = processedseg.splice(seglength - 1, 1, processedseg[seglength - 2])[0]);
+        content = processedseg.join('\n\nHuman:');
+    } else {
+        content = content.replace(/\n\n<(hidden|\/plot)>[\s\S]*?\n\n<extra_prompt>\s*/, '\n\nHuman:'); //sd prompt用
     }
 
-    let segcontent = content.split('\n\nHuman:');
-    let processedseg = segcontent.map(seg => {
-        return seg.replace(/(\n\nAssistant:[\s\S]+?)(\n\n<hidden>[\s\S]+?<\/hidden>)/g, '$2$1');
-    });
-    content = processedseg.join('\n\nHuman:');
-  
-    content = content.replace(/\n\n\n/g, '\n\n');
+    //消除空XML tags或多余的\n
+    content = content.replace(/(\n)<\/hidden>\n+?<hidden>\n/g, '');
+    content = content.replace(/\n<(example|hidden)>\n+?<\/\1>/g, '');
+    content = content.replace(/(?<=\n<(card|hidden|example)>\n)\s*/g, '');
+    content = content.replace(/\s*(?=\n<\/(card|hidden|example)>(\n|$))/g, '');
+    content = content.replace(/(?<=\n)\n(?=\n)/g, '');
 
     return content;
 };
@@ -315,7 +307,7 @@ const updateParams = res => {
     }), conversations = await convRes.json();
     updateParams(convRes);
 /**************************** */
-    if (Config.Cookiecounter === -1) {
+    if (Config.Cookiecounter === -1 && currentIndex) {
         Conversation.uuid = randomUUID().toString();
         const res = await (Config.Settings.Superfetch ? Superfetch : fetch)(`${Config.rProxy}/api/organizations/${uuidOrg}/chat_conversations`, {
             headers: {
@@ -333,6 +325,8 @@ const updateParams = res => {
             writeSettings(Config);
             currentIndex = currentIndex < 1 ? 0 : currentIndex - 1;
         }
+        changeflag += 1;
+        console.log(`Counter: ${changeflag}\nstatus: ${res.status}`);
         return CookieChanger.emit('ChangeCookie');
     }
 /**************************** */
@@ -487,15 +481,11 @@ const updateParams = res => {
                             });
                             updateParams(res);
 /**************************** */
-                            if (res.status < 200 || res.status >= 300) {
-                                let json = await res.json();
-                                if ((json.error.message.includes(`account_needs_verification`)) && Config.CookieArray?.length > 0) {
-                                    Config.CookieArray = Config.CookieArray.filter(item => item !== Config.Cookie);
-                                    writeSettings(Config);
-                                    currentIndex = currentIndex < 1 ? 0 : currentIndex - 1;
-                                    console.log(`res.status: ${res.status}`);
-                                    CookieChanger.emit('ChangeCookie');
-                                }   
+                            if (res.status === 403 && Config.CookieArray?.length > 0) {
+                                Config.CookieArray = Config.CookieArray.filter(item => item !== Config.Cookie);
+                                writeSettings(Config);
+                                currentIndex = currentIndex < 1 ? 0 : currentIndex - 1;
+                                CookieChanger.emit('ChangeCookie');
                             }
 /**************************** */
                             await checkResErr(res);
@@ -519,10 +509,10 @@ const updateParams = res => {
                             message.customname = (message => [ 'assistant', 'user' ].includes(message.role) && null != message.name && !(message.name in Replacements))(message);
                             if (next) {
                                 if (message.name && next.name && message.name === next.name) {
-                                    message.content += '\n' + next.content;
+                                    message.content += '\n\n' + next.content; //message.content += '\n' + next.content;
                                     next.merged = true;
                                 } else if (next.role === message.role) {
-                                    message.content += '\n' + next.content;
+                                    message.content += '\n\n' + next.content; //message.content += '\n' + next.content;
                                     next.merged = true;
                                 }
                             }
@@ -678,6 +668,7 @@ const updateParams = res => {
                     clewdStream.censored && console.warn('[33mlikely your account is hard-censored[0m');
                     prevImpersonated = clewdStream.impersonated;
                     setTitle('ok ' + bytesToSize(clewdStream.size));
+                    console.log(`${200 == fetchAPI.status ? '[32m' : '[33m'}${fetchAPI.status}![0m\n`);
 /******************************** */
                     if (clewdStream.readonly) {
                         Config.CookieArray = Config.CookieArray.filter(item => item !== Config.Cookie);
@@ -690,7 +681,6 @@ const updateParams = res => {
                         CookieChanger.emit('ChangeCookie');
                     }
 /******************************** */
-                    console.log(`${200 == fetchAPI.status ? '[32m' : '[33m'}${fetchAPI.status}![0m\n`);
                     clewdStream.empty();
                 }
                 if (prevImpersonated) {
@@ -769,7 +759,7 @@ const updateParams = res => {
 /***************************** */
     !Config.rProxy && (Config.rProxy = AI.end());
     Config.rProxy.endsWith('/') && (Config.rProxy = Config.rProxy.slice(0, -1));
-    currentIndex = Math.floor(Math.random() * Config.CookieArray.length);
+    Config.Cookiecounter !== -1 && (currentIndex = Math.floor(Math.random() * Config.CookieArray.length));
 /***************************** */
     Proxy.listen(Config.Port, Config.Ip, onListen);
     Proxy.on('error', (err => {
