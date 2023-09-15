@@ -129,7 +129,7 @@ const ConfigPath = joinP(__dirname, './config.js'), LogPath = joinP(__dirname, '
 
 let uuidOrg, curPrompt = {}, prevPrompt = {}, prevMessages = [], prevImpersonated = false, Config = {
     Cookie: '',
-    CookieArray: [sessionKey=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,sessionKey=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,sessionKey=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],
+    CookieArray: [],
     Cookiecounter: 0,
     Ip: process.env.PORT ? '0.0.0.0' : '127.0.0.1',
     Port: process.env.PORT || 8444,
