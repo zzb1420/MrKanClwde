@@ -157,7 +157,7 @@ let uuidOrg, curPrompt = {}, prevPrompt = {}, prevMessages = [], prevImpersonate
         PreserveChats: true,
         LogMessages: true,
         FullColon: true,
-        padtxt: 13500,
+        padtxt: false,
         xmlPlot: true,
         Superfetch: true
     }
